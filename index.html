@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<title>Мобильный журнал — оценки</title>
+<style>
+:root{
+  --bg:#0b0e14; --card:#141926; --card-2:#1a2032; --border:#252d44;
+  --text:#e9edf5; --muted:#8a93a8;
+  --accent:#00ff88; --accent-soft:rgba(0,255,136,.12);
+  --blue:#00d4ff; --yellow:#ffd60a; --red:#ff453a; --purple:#bf5af2; --orange:#ff9f0a;
+  color-scheme: dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--text);
+  padding-bottom:calc(110px + env(safe-area-inset-bottom));
+}
+header{
+  position:sticky;top:0;z-index:30;
+  background:rgba(11,14,20,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
+}
+.header-row{display:flex;align-items:center;gap:10px;max-width:760px;margin:0 auto}
+.header-title{font-size:17px;font-weight:800}
+.header-sub{font-size:12px;color:var(--muted);margin-top:2px}
+main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px}
+.screen-title{font-size:20px;font-weight:900;margin:4px 0 2px}
+.screen-title.small{font-size:17px}
+.icon-btn{
+  border:1px solid var(--border);background:var(--card);color:var(--text);
+  width:40px;height:40px;border-radius:12px;font-size:17px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.icon-btn:active{border-color:var(--accent)}
+/* ---- поиск / списки ---- */
+.search{
+  width:100%;height:46px;border-radius:12px;border:1px solid var(--border);
+  background:var(--card);color:var(--text);font-size:16px;padding:0 14px;margin-top:10px;
+}
+.search:focus,.select:focus{outline:none;border-color:var(--accent)}
+.list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.list-item{padding:14px 16px;cursor:pointer;transition:border-color .15s;display:flex;align-items:center;gap:10px}
+.list-item:active{border-color:var(--accent)}
+.li-name{font-size:15px;font-weight:800}
+.li-sub{font-size:12px;color:var(--muted);margin-top:3px}
+.chev{color:var(--muted);font-size:24px;line-height:1;flex-shrink:0}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.seg button{
+  height:42px;border-radius:12px;border:1px solid var(--border);
+  background:var(--card-2);color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;
+}
+.seg button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+/* ---- шапка группы/студента ---- */
+.group-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;border:1px solid;flex-shrink:0}
+.b1{color:var(--blue);border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.1)}
+.b2{color:var(--purple);border-color:rgba(191,90,242,.4);background:rgba(191,90,242,.1)}
+.b0{color:var(--muted);border-color:var(--border);background:transparent}
+/* ---- статистика студента ---- */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.stat-mini{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 6px;text-align:center}
+.stat-mini .v{font-size:16px;font-weight:900}
+.stat-mini .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+/* ---- карточка занятия ---- */
+.students{display:flex;flex-direction:column;gap:10px}
+.student{padding:12px 14px}
+.student-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lesson-date{font-size:15px;font-weight:800;flex:1}
+.tb{font-size:12px;font-weight:800;padding:4px 10px;border-radius:8px;border:1px solid;flex-shrink:0}
+.t-G {color:var(--accent);border-color:rgba(0,255,136,.4);background:rgba(0,255,136,.1)}
+.t-P1{color:var(--blue);border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.1)}
+.t-P2{color:var(--purple);border-color:rgba(191,90,242,.4);background:rgba(191,90,242,.1)}
+.t-IN{color:var(--orange);border-color:rgba(255,159,10,.4);background:rgba(255,159,10,.1)}
+.t-X {color:var(--muted);border-color:var(--border);background:transparent}
+.chip{font-size:11px;color:var(--muted);background:var(--card-2);border:1px solid var(--border);padding:3px 8px;border-radius:8px}
+.grades{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.grade-btn{
+  height:48px;border-radius:12px;font-size:18px;font-weight:800;
+  border:1.5px solid var(--border);background:var(--card-2);color:var(--muted);
+  cursor:pointer;transition:transform .06s ease,background .15s,color .15s,border-color .15s;
+}
+.grade-btn:active{transform:scale(.94)}
+.grade-btn.g5.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);box-shadow:0 0 14px rgba(0,255,136,.25)}
+.grade-btn.g4.active{background:rgba(0,212,255,.12);border-color:var(--blue);color:var(--blue)}
+.grade-btn.g3.active{background:rgba(255,214,10,.12);border-color:var(--yellow);color:var(--yellow)}
+.grade-btn.g2.active{background:rgba(255,69,58,.12);border-color:var(--red);color:var(--red)}
+/* ---- панель отправки ---- */
+#sendbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;
+  background:rgba(11,14,20,.95);backdrop-filter:blur(12px);
+  border-top:1px solid var(--border);
+  padding:10px 16px calc(12px + env(safe-area-inset-bottom));
+  display:none;flex-direction:column;gap:6px;align-items:stretch;
+}
+.send-info{font-size:12px;color:var(--muted);text-align:center}
+#send-btn{
+  width:100%;max-width:720px;margin:0 auto;height:52px;border-radius:14px;border:none;
+  background:linear-gradient(135deg,#00ff88,#00cc6a);color:#06130c;
+  font-size:16px;font-weight:800;cursor:pointer;
+}
+#send-btn:disabled{opacity:.35}
+/* ---- служебное ---- */
+#toast{
+  position:fixed;left:50%;transform:translateX(-50%) translateY(20px);
+  bottom:calc(118px + env(safe-area-inset-bottom));
+  background:#101623;border:1px solid var(--border);color:var(--text);
+  padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;
+  transition:opacity .25s,transform .25s;z-index:50;max-width:90vw;text-align:center;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{border-color:var(--accent);color:var(--accent)}
+#toast.err{border-color:var(--red);color:var(--red)}
+.spin-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 0}
+.spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.spin-text{color:var(--muted);font-size:13px}
+.error-box{background:rgba(255,69,58,.08);border:1px solid rgba(255,69,58,.35);color:var(--red);padding:12px 14px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.error-box button{align-self:flex-start;background:transparent;border:1px solid var(--red);color:var(--red);padding:6px 14px;border-radius:10px;font-size:13px;cursor:pointer}
+.empty{color:var(--muted);text-align:center;padding:30px 0;font-size:14px}
+.setup{padding:18px;font-size:14px;line-height:1.6;color:var(--muted)}
+.setup b{color:var(--text)}
+.setup code{color:var(--accent);background:var(--card-2);padding:2px 6px;border-radius:6px;font-size:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div style="flex:1">
+      <div class="header-title">📗 Мобильный журнал</div>
+      <div class="header-sub">оценки по студенту — за все даты сразу</div>
+    </div>
+    <button class="icon-btn" onclick="refresh()" title="Обновить">⟳</button>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<div id="sendbar">
+  <div id="send-info" class="send-info">Отметьте оценки</div>
+  <button id="send-btn" onclick="sendGrades()" disabled>Отправить</button>
+</div>
+<div id="toast"></div>
+
+<script>
+// ⚠️ ВСТАВЬТЕ СЮДА URL ВАШЕГО ВЕБ-ПРИЛОЖЕНИЯ APPS SCRIPT (заканчивается на /exec)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyqsjoEgVxuABle7p4im0wh_EUL-kDVXVW0TglSYhkfqPuULLZQhqnDwfOeHID_4Qh_mQ/exec';
+
+const state = {
+  screen: 'groups',   // groups | students | student
+  groups: [],
+  search: '',
+  group: null,          // {group, subjectCode, subjectName}
+  data: null,           // {students, lessons}
+  studentSearch: '',
+  subFilter: '',        // '' | '1' | '2'
+  studentIdx: -1,       // индекс студента в data.students
+  pending: new Map(),   // lessonIndex -> оценка '2'..'5'
+  loading: false,
+  sending: false,
+  error: ''
+};
+
+const $app = document.getElementById('app');
+
+/* ---------- утилиты ---------- */
+function escapeHtml(v){
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function isConfigured(){ return /^https:\/\//.test(APPS_SCRIPT_URL); }
+
+async function api(action, payload){
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action }, payload || {}))
+  });
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + (type || '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.className = ''; }, 3200);
+}
+function spinnerHTML(){
+  return '<div class="spin-wrap"><div class="spinner"></div><div class="spin-text">Загрузка…</div></div>';
+}
+function errorHTML(){
+  return `<div class="error-box">⚠️ ${escapeHtml(state.error)}
+    <button onclick="retry()">Повторить</button></div>`;
+}
+function retry(){
+  if(state.screen === 'groups') loadGroups(); else loadGroupData();
+}
+function subBadge(subgroup){
+  if(subgroup === '1') return '<span class="badge b1">П1</span>';
+  if(subgroup === '2') return '<span class="badge b2">П2</span>';
+  return '<span class="badge b0">без П</span>';
+}
+function isLocked(type, subgroup){
+  if(!subgroup) return false;
+  if(type === 'П1' && subgroup === '2') return true;
+  if(type === 'П2' && subgroup === '1') return true;
+  return false;
+}
+function relevantLabel(s){
+  if(s.subgroup === '1') return 'Г (лекции) + Подгруппа 1';
+  if(s.subgroup === '2') return 'Г (лекции) + Подгруппа 2';
+  return 'Все занятия';
+}
+
+/* ---------- загрузка ---------- */
+async function loadGroups(){
+  state.loading = true; state.error = ''; state.screen = 'groups'; render();
+  try{
+    const res = await api('getGroups');
+    if(!res.success) throw new Error(res.error || 'Ошибка загрузки');
+    state.groups = res.groups || [];
+  }catch(e){ state.error = e.message; }
+  state.loading = false; render();
+}
+
+async function selectGroup(i){
+  const g = state.groups[i];
+  if(!g) return;
+  state.group = g;
+  state.subFilter = '';
+  state.studentSearch = '';
+  state.studentIdx = -1;
+  state.pending = new Map();
+  state.screen = 'students';
+  await loadGroupData();
+}
+
+async function loadGroupData(){
+  state.loading = true; state.error = ''; render();
+  try{
+    const res = await api('getGroupData', {
+      group: state.group.group,
+      subjectCode: state.group.subjectCode
+    });
+    if(!res.success) throw new Error(res.error || 'Ошибка загрузки');
+    state.data = res;
+    if(state.studentIdx >= res.students.length) state.studentIdx = -1;
+  }catch(e){
+    state.error = e.message;
+    state.data = null;
+  }
+  state.loading = false; render();
+}
+
+function backToGroups(){
+  state.screen = 'groups';
+  state.group = null; state.data = null;
+  state.studentIdx = -1; state.pending = new Map();
+  render();
+}
+function backToStudents(){
+  state.screen = 'students';
+  state.studentIdx = -1; state.pending = new Map();
+  render();
+}
+function openStudent(i){
+  state.studentIdx = i;
+  state.pending = new Map();
+  state.screen = 'student';
+  render();
+  window.scrollTo(0, 0);
+}
+function refresh(){
+  if(!isConfigured()){ render(); return; }
+  if(state.screen === 'groups') loadGroups();
+  else if(state.group) loadGroupData();
+}
+
+/* ---------- статистика по студенту ---------- */
+function studentSummary(pos){
+  const s = state.data.students[pos];
+  const rel = state.data.lessons.filter(l => !isLocked(l.type, s.subgroup));
+  let graded = 0, sum = 0, cnt = 0, abs = 0;
+  rel.forEach(l => {
+    const g = String(l.grades[pos] || '').trim().toLowerCase();
+    if(g === 'н' || g === 'нб'){ abs++; return; }
+    if(g !== ''){
+      graded++;
+      const n = parseFloat(g.replace(',', '.'));
+      if(!isNaN(n)){ sum += n; cnt++; }
+    }
+  });
+  return { total: rel.length, graded, avg: cnt ? sum / cnt : 0, abs };
+}
+
+/* ---------- логика оценок ---------- */
+function tapGrade(lessonIndex, g){
+  if(state.pending.get(lessonIndex) === g) state.pending.delete(lessonIndex);
+  else state.pending.set(lessonIndex, g);
+  render();
+}
+function setSubFilter(f){
+  state.subFilter = f;
+  render();
+}
+
+async function sendGrades(){
+  if(state.sending) return;
+  const student = state.data?.students?.[state.studentIdx];
+  if(!student) return;
+  const grades = [];
+  state.pending.forEach((value, lessonIndex) => grades.push({ lessonIndex, value }));
+  if(!grades.length) return;
+
+  state.sending = true; renderSendbar();
+  try{
+    let written = 0, errs = [];
+    const res = await api('submitStudentGrades', {
+      group: state.group.group,
+      subjectCode: state.group.subjectCode,
+      studentRow: student.row,
+      grades
+    });
+
+    if(res.success){
+      written = res.written;
+      errs = res.errors || [];
+    } else if(/неизвестн/i.test(res.error || '')){
+      // Запасной режим для старой версии скрипта: по одному запросу на занятие
+      for(const item of grades){
+        const r = await api('submitGrades', {
+          group: state.group.group,
+          subjectCode: state.group.subjectCode,
+          lessonIndex: item.lessonIndex,
+          grades: [{ row: student.row, value: item.value }]
+        });
+        if(r.success) written += r.written;
+        else errs.push(r.error || 'ошибка');
+      }
+    } else {
+      throw new Error(res.error || 'Ошибка сохранения');
+    }
+
+    state.pending = new Map();
+    let msg = `✅ Сохранено оценок: ${written}`;
+    if(errs.length) msg += ` · пропущено: ${errs.length}`;
+    toast(msg, 'ok');
+    await loadGroupData();
+  }catch(e){
+    toast('❌ ' + e.message, 'err');
+  }
+  state.sending = false; renderSendbar();
+}
+
+/* ---------- рендер ---------- */
+function render(){
+  document.getElementById('sendbar').style.display = 'none';
+  if(!isConfigured()){ renderSetup(); return; }
+  if(state.screen === 'groups') renderGroups();
+  else if(state.screen === 'students') renderStudents();
+  else renderStudent();
+  renderSendbar();
+}
+
+function renderSetup(){
+  $app.innerHTML = `
+    <div class="screen-title">Настройка</div>
+    <div class="card setup">
+      <p><b>1.</b> Добавьте блок «Мобильный API» в <code>Code.gs</code> вашей таблицы и разверните веб-приложение (доступ — «Все»).</p>
+      <p><b>2.</b> Скопируйте URL веб-приложения (заканчивается на <code>/exec</code>).</p>
+      <p><b>3.</b> Вставьте его в константу <code>APPS_SCRIPT_URL</code> в начале скрипта этого файла.</p>
+    </div>`;
+}
+
+/* --- экран 1: группы --- */
+function groupListHTML(){
+  const q = state.search.trim().toLowerCase();
+  const list = state.groups
+    .map((g, i) => ({ g, i }))
+    .filter(({ g }) => !q || (g.group + ' ' + g.subjectName).toLowerCase().includes(q));
+  if(!list.length) return '<div class="empty">Ничего не найдено</div>';
+  return list.map(({ g, i }) => `
+    <div class="card list-item" onclick="selectGroup(${i})">
+      <div style="flex:1;min-width:0">
+        <div class="li-name">${escapeHtml(g.group)}</div>
+        <div class="li-sub">${escapeHtml(g.subjectName)}${
+          g.subjectCode && g.subjectCode !== 'Other' ? ' · ' + escapeHtml(g.subjectCode) : ''
+        }</div>
+      </div>
+      <span class="chev">›</span>
+    </div>`).join('');
+}
+function onSearch(v){
+  state.search = v;
+  const el = document.getElementById('group-list');
+  if(el) el.innerHTML = groupListHTML();
+}
+function renderGroups(){
+  $app.innerHTML = `
+    <div class="screen-title">Выберите группу</div>
+    <input class="search" placeholder="Поиск группы или предмета…"
+      value="${escapeHtml(state.search)}" oninput="onSearch(this.value)">
+    ${state.loading ? spinnerHTML() : ''}
+    ${state.error ? errorHTML() : ''}
+    <div class="list" id="group-list">${state.loading || state.error ? '' : groupListHTML()}</div>`;
+}
+
+/* --- экран 2: студенты --- */
+function studentListHTML(){
+  const q = state.studentSearch.trim().toLowerCase();
+  const list = state.data.students
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => !state.subFilter || s.subgroup === state.subFilter)
+    .filter(({ s }) => !q || (s.surname + ' ' + s.name).toLowerCase().includes(q));
+  if(!list.length) return '<div class="empty">Никого не найдено</div>';
+  return list.map(({ s, i }) => {
+    const sum = studentSummary(i);
+    return `
+    <div class="card list-item" onclick="openStudent(${i})">
+      <div style="flex:1;min-width:0">
+        <div class="li-name">${escapeHtml(s.surname)} ${escapeHtml(s.name)}</div>
+        <div class="li-sub">оценок: ${sum.graded}${sum.avg ? ' · ср. ' + sum.avg.toFixed(2) : ''}${sum.abs ? ' · пропусков: ' + sum.abs : ''}</div>
+      </div>
+      ${subBadge(s.subgroup)}
+      <span class="chev">›</span>
+    </div>`;
+  }).join('');
+}
+function onStudentSearch(v){
+  state.studentSearch = v;
+  const el = document.getElementById('student-list');
+  if(el) el.innerHTML = studentListHTML();
+}
+function renderStudents(){
+  const g = state.group;
+  let body = '';
+  if(state.loading) body = spinnerHTML();
+  else if(state.error) body = errorHTML();
+  else if(state.data){
+    body = `
+      <input class="search" placeholder="Поиск студента…"
+        value="${escapeHtml(state.studentSearch)}" oninput="onStudentSearch(this.value)">
+      <div class="seg">
+        ${[['','Все'],['1','Подгр. 1'],['2','Подгр. 2']].map(([v, l]) =>
+          `<button class="${state.subFilter === v ? 'on' : ''}" onclick="setSubFilter('${v}')">${l}</button>`).join('')}
+      </div>
+      <div class="list" id="student-list">${studentListHTML()}</div>`;
+  }
+  $app.innerHTML = `
+    <div class="group-head">
+      <button class="icon-btn" onclick="backToGroups()">←</button>
+      <div style="flex:1;min-width:0">
+        <div class="screen-title small">${escapeHtml(g.group)}</div>
+        <div class="header-sub">${escapeHtml(g.subjectName)} · выберите студента</div>
+      </div>
+    </div>
+    ${body}`;
+}
+
+/* --- экран 3: занятия студента --- */
+function lessonHTML(l, pos){
+  const saved = String(l.grades[pos] || '').trim();
+  const pendingVal = state.pending.get(l.index);
+  const tClass =
+    l.type === 'П1' ? 't-P1' :
+    l.type === 'П2' ? 't-P2' :
+    l.type === 'ИН' ? 't-IN' :
+    l.type === 'Г'  ? 't-G'  : 't-X';
+  return `
+  <div class="card student">
+    <div class="student-top">
+      <span class="tb ${tClass}">${escapeHtml(l.type || '—')}</span>
+      <span class="lesson-date">${escapeHtml(l.date || 'без даты')}</span>
+      ${saved ? `<span class="chip">сейчас: ${escapeHtml(saved)}</span>` : ''}
+    </div>
+    <div class="grades">
+      ${['2','3','4','5'].map(g =>
+        `<button class="grade-btn g${g} ${pendingVal === g ? 'active' : ''}"
+          onclick="tapGrade(${l.index},'${g}')">${g}</button>`).join('')}
+    </div>
+  </div>`;
+}
+function renderStudent(){
+  const g = state.group;
+  const s = state.data?.students?.[state.studentIdx];
+  if(!s){ renderStudents(); return; }
+
+  const sum = studentSummary(state.studentIdx);
+  const lessons = [...state.data.lessons]
+    .reverse() // последние занятия сверху
+    .filter(l => !isLocked(l.type, s.subgroup));
+
+  const avgColor =
+    sum.avg >= 4.5 ? 'var(--accent)' :
+    sum.avg >= 3.5 ? 'var(--blue)' :
+    sum.avg >= 2.5 ? 'var(--yellow)' :
+    sum.avg > 0 ? 'var(--red)' : 'var(--muted)';
+
+  $app.innerHTML = `
+    <div class="group-head">
+      <button class="icon-btn" onclick="backToStudents()">←</button>
+      <div style="flex:1;min-width:0">
+        <div class="screen-title small">${escapeHtml(s.surname)} ${escapeHtml(s.name)}</div>
+        <div class="header-sub">${escapeHtml(g.group)} · ${relevantLabel(s)}</div>
+      </div>
+      ${subBadge(s.subgroup)}
+    </div>
+    <div class="stats-row">
+      <div class="stat-mini"><div class="v">${sum.total}</div><div class="k">занятий</div></div>
+      <div class="stat-mini"><div class="v">${sum.graded}</div><div class="k">оценок</div></div>
+      <div class="stat-mini"><div class="v" style="color:${avgColor}">${sum.avg ? sum.avg.toFixed(2) : '—'}</div><div class="k">ср. балл</div></div>
+      <div class="stat-mini"><div class="v" style="color:${sum.abs ? 'var(--red)' : 'var(--muted)'}">${sum.abs}</div><div class="k">пропуски</div></div>
+    </div>
+    <div class="students">
+      ${lessons.map(l => lessonHTML(l, state.studentIdx)).join('')}
+      ${lessons.length === 0 ? '<div class="empty">Занятий пока нет</div>' : ''}
+    </div>`;
+}
+
+/* --- панель отправки --- */
+function renderSendbar(){
+  const bar = document.getElementById('sendbar');
+  const visible = isConfigured() && state.screen === 'student' &&
+    state.data && state.studentIdx >= 0;
+  bar.style.display = visible ? 'flex' : 'none';
+  if(!visible) return;
+  const n = state.pending.size;
+  const s = state.data.students[state.studentIdx];
+  document.getElementById('send-info').textContent =
+    n ? `${s.surname}: будет записано оценок — ${n}` : 'Отметьте оценки за нужные даты';
+  const btn = document.getElementById('send-btn');
+  btn.disabled = n === 0 || state.sending;
+  btn.textContent = state.sending ? 'Сохранение…' : `Отправить${n ? ` (${n})` : ''}`;
+}
+
+/* ---------- старт ---------- */
+window.addEventListener('DOMContentLoaded', () => {
+  if(isConfigured()) loadGroups(); else render();
+});
+</script>
+</body>
+</html>
