@@ -64,6 +64,13 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
 .li-name{font-size:15px;font-weight:800}
 .li-sub{font-size:12px;color:var(--muted);margin-top:3px}
 .chev{color:var(--muted);font-size:24px;line-height:1;flex-shrink:0}
+.global-search-card{padding:15px;margin-bottom:22px}
+.global-search-title{font-size:15px;font-weight:850}
+.global-search-hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
+.global-results{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.global-results .list-item{background:var(--card-2);padding:11px 13px}
+.global-result-count{font-size:11px;color:var(--muted);margin-top:11px}
+.group-list-title{font-size:17px;font-weight:850;margin-top:5px}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
 .seg button{
   height:42px;border-radius:12px;border:1px solid var(--border);
@@ -331,12 +338,18 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
 
 <script>
 // ⚠️ ВСТАВЬТЕ СЮДА URL ВАШЕГО ВЕБ-ПРИЛОЖЕНИЯ APPS SCRIPT (заканчивается на /exec)
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx__Hy-HkhwnIwtECZoh9SP0bCT25tfbsIqIa3OU_mdcQ0RxFtbr24bMWHZY1zpIJlS8w/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxRZX76Kg_frtEN-aeQi86SNDLRYEqZhPbeFYxszT1jJuwJscL5MiyQLTbJyiNLlyC74g/exec';
 
 const state = {
   screen: 'groups',   // groups | students | student
   groups: [],
   search: '',
+  studentDirectory: [],
+  directoryLoaded: false,
+  directoryLoading: false,
+  directoryError: '',
+  globalStudentSearch: '',
+  fromGlobalSearch: false,
   group: null,          // {group, subjectCode, subjectName}
   data: null,           // {students, lessons}
   groupCache: new Map(), // уже загруженные группы текущей вкладки
@@ -757,7 +770,7 @@ async function processQueue(){
 }
 
 /* ---------- загрузка ---------- */
-async function loadGroups(){
+async function loadGroups(forceDirectory = false){
   state.loading = true; state.error = ''; state.screen = 'groups'; render();
   try{
     const res = await api('getGroups');
@@ -765,12 +778,34 @@ async function loadGroups(){
     state.groups = res.groups || [];
   }catch(e){ state.error = e.message; }
   state.loading = false; render();
+  if(!state.directoryLoaded || forceDirectory) loadStudentDirectory(forceDirectory);
 }
 
-async function selectGroup(i){
+async function loadStudentDirectory(force = false){
+  if(state.directoryLoading || (state.directoryLoaded && !force)) return;
+  state.directoryLoading = true;
+  state.directoryError = '';
+  if(state.screen === 'groups') renderGlobalSearchResults();
+  try{
+    const res = await api('getAllStudents');
+    if(!res.success || !Array.isArray(res.students)){
+      throw new Error(res.error || 'Не удалось получить список студентов');
+    }
+    state.studentDirectory = res.students;
+    state.directoryLoaded = true;
+  }catch(e){
+    state.directoryError = e.message || 'Ошибка соединения';
+  }finally{
+    state.directoryLoading = false;
+    if(state.screen === 'groups') renderGlobalSearchResults();
+  }
+}
+
+async function selectGroup(i, skipBackgroundRefresh = false){
   const g = state.groups[i];
   if(!g) return;
   navigationDirection = 'forward';
+  state.fromGlobalSearch = false;
   state.group = g;
   state.subFilter = '';
   state.studentSearch = '';
@@ -781,7 +816,7 @@ async function selectGroup(i){
     state.loading = false;
     state.error = '';
     render();
-    if(navigator.onLine) loadGroupData(true);
+    if(navigator.onLine && !skipBackgroundRefresh) loadGroupData(true);
   }else{
     await loadGroupData();
   }
@@ -817,10 +852,12 @@ function backToGroups(){
   navigationDirection = 'back';
   state.screen = 'groups';
   state.group = null; state.data = null;
+  state.fromGlobalSearch = false;
   state.studentIdx = -1;
   render();
 }
 function backToStudents(){
+  if(state.fromGlobalSearch){ backToGroups(); return; }
   navigationDirection = 'back';
   state.screen = 'students';
   state.studentIdx = -1;
@@ -835,7 +872,7 @@ function openStudent(i){
 }
 function refresh(){
   if(!isConfigured()){ render(); return; }
-  if(state.screen === 'groups') loadGroups();
+  if(state.screen === 'groups') loadGroups(true);
   else if(state.group) loadGroupData();
 }
 
@@ -963,6 +1000,85 @@ function renderSetup(){
 }
 
 /* --- экран 1: группы --- */
+function normalizeGlobalSearch(value){
+  return String(value || '').toLocaleLowerCase('ru').replace(/ё/g, 'е').trim();
+}
+function globalStudentResultsHTML(){
+  const query = normalizeGlobalSearch(state.globalStudentSearch);
+  if(!query) return '';
+  if(query.length < 2) return '<div class="global-search-hint">Введите хотя бы 2 символа.</div>';
+  if(state.directoryLoading && !state.directoryLoaded){
+    return '<div class="global-search-hint">Загружаем список студентов…</div>';
+  }
+  if(!state.directoryLoaded){
+    return `<div class="error-box">Поиск пока недоступен: ${escapeHtml(state.directoryError || 'нет данных')}
+      <button onclick="loadStudentDirectory(true)">Повторить</button></div>`;
+  }
+
+  const words = query.split(/\s+/).filter(Boolean);
+  const matches = state.studentDirectory
+    .map((student, index) => ({ student, index }))
+    .filter(({student}) => {
+      const text = normalizeGlobalSearch(
+        [student.surname, student.name, student.patronymic, student.group].join(' ')
+      );
+      return words.every(word => text.includes(word));
+    });
+
+  if(!matches.length) return '<div class="global-search-hint">Студенты не найдены.</div>';
+  const visible = matches.slice(0, 40);
+  return `
+    <div class="global-result-count">Найдено: ${matches.length}${matches.length > 40 ? ' · показаны первые 40, уточните запрос' : ''}</div>
+    <div class="global-results">
+      ${visible.map(({student, index}) => `
+        <div class="card list-item" onclick="openStudentFromGlobalSearch(${index})">
+          <div style="flex:1;min-width:0">
+            <div class="li-name">${escapeHtml([student.surname, student.name, student.patronymic].filter(Boolean).join(' '))}</div>
+            <div class="li-sub">${escapeHtml(student.group)} · ${escapeHtml(student.subjectName)}${student.subgroup ? ' · П' + escapeHtml(student.subgroup) : ''}</div>
+          </div>
+          <span class="chev">›</span>
+        </div>`).join('')}
+    </div>`;
+}
+function renderGlobalSearchResults(){
+  const container = document.getElementById('global-search-results');
+  if(container) container.innerHTML = globalStudentResultsHTML();
+}
+function onGlobalStudentSearch(value){
+  state.globalStudentSearch = value;
+  renderGlobalSearchResults();
+}
+async function openStudentFromGlobalSearch(directoryIndex){
+  const target = state.studentDirectory[directoryIndex];
+  if(!target) return;
+  const groupIndex = state.groups.findIndex(group =>
+    group.group === target.group && group.subjectCode === target.subjectCode
+  );
+  if(groupIndex < 0){ toast('Группа студента не найдена. Обновите список.', 'err'); return; }
+
+  // Загружаем нужный журнал и ищем студента по коду, а не по позиции в списке.
+  await selectGroup(groupIndex, true);
+  if(!state.data || state.group?.group !== target.group ||
+      state.group?.subjectCode !== target.subjectCode) return;
+
+  let studentIndex = state.data.students.findIndex(student =>
+    target.code && student.code === target.code &&
+    student.surname === target.surname && student.name === target.name
+  );
+  if(studentIndex < 0){
+    studentIndex = state.data.students.findIndex(student =>
+      student.row === target.row && student.surname === target.surname &&
+      student.name === target.name && student.subgroup === target.subgroup
+    );
+  }
+  if(studentIndex < 0){
+    toast('Студент не найден в журнале. Обновите данные группы.', 'err');
+    return;
+  }
+
+  state.fromGlobalSearch = true;
+  openStudent(studentIndex);
+}
 function groupListHTML(){
   const q = state.search.trim().toLowerCase();
   const list = state.groups
@@ -987,7 +1103,14 @@ function onSearch(v){
 }
 function renderGroups(){
   $app.innerHTML = `
-    <div class="screen-title">Выберите группу</div>
+    <div class="card global-search-card">
+      <div class="global-search-title">Поиск студента во всех группах</div>
+      <div class="global-search-hint">Введите фамилию, имя или отчество, чтобы сразу открыть журнал студента.</div>
+      <input class="search" type="search" autocomplete="off" placeholder="Например, Иванов Иван…"
+        value="${escapeHtml(state.globalStudentSearch)}" oninput="onGlobalStudentSearch(this.value)">
+      <div id="global-search-results">${globalStudentResultsHTML()}</div>
+    </div>
+    <div class="group-list-title">Выберите группу</div>
     <input class="search" placeholder="Поиск группы или предмета…"
       value="${escapeHtml(state.search)}" oninput="onSearch(this.value)">
     ${state.loading ? spinnerHTML() : ''}
