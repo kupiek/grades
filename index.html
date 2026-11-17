@@ -85,7 +85,9 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
 .students{display:flex;flex-direction:column;gap:10px}
 .student{padding:12px 14px}
 .student-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.lesson-date{font-size:15px;font-weight:800;flex:1}
+.lesson-heading{display:flex;align-items:center;gap:6px;flex:1 1 180px;min-width:0;overflow:hidden;white-space:nowrap}
+.lesson-date{font-size:15px;font-weight:800;flex-shrink:0;white-space:nowrap}
+.lesson-topic{font-size:12px;color:var(--muted);flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .tb{font-size:12px;font-weight:800;padding:4px 10px;border-radius:8px;border:1px solid;flex-shrink:0}
 .t-G {color:var(--accent);border-color:rgba(0,255,136,.4);background:rgba(0,255,136,.1)}
 .t-P1{color:var(--blue);border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.1)}
@@ -1048,6 +1050,8 @@ function renderStudents(){
 /* --- экран 3: занятия студента --- */
 function lessonHTML(l, pos){
   const saved = String(l.grades[pos] ?? '').trim();
+  const topic = String(l.topic ?? '').trim();
+  const shortTopic = topic.length > 28 ? topic.slice(0, 27).trimEnd() + '…' : topic;
   const s = state.data.students[pos];
   const key = cellKey(state.group.group, state.group.subjectCode, s.row, l.index);
   const draft = state.drafts.get(key);
@@ -1067,7 +1071,10 @@ function lessonHTML(l, pos){
   <div class="card student">
     <div class="student-top">
       <span class="tb ${tClass}">${escapeHtml(l.type || '—')}</span>
-      <span class="lesson-date">${escapeHtml(l.date || 'без даты')}</span>
+      <div class="lesson-heading">
+        <span class="lesson-date">${escapeHtml(l.date || 'без даты')}</span>
+        ${shortTopic ? `<span class="lesson-topic" title="${escapeHtml(topic)}">· ${escapeHtml(shortTopic)}</span>` : ''}
+      </div>
       ${saved ? `<span class="chip">в Sheets: ${escapeHtml(saved)}</span>` : ''}
       ${statusChip}
     </div>
