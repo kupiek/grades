@@ -127,6 +127,26 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
 .setup{padding:18px;font-size:14px;line-height:1.6;color:var(--muted)}
 .setup b{color:var(--text)}
 .setup code{color:var(--accent);background:var(--card-2);padding:2px 6px;border-radius:6px;font-size:12px}
+.sync-btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:11px;padding:8px 10px;font-size:11px;font-weight:800;cursor:pointer;max-width:140px}
+.sync-btn.attention{border-color:var(--yellow);color:var(--yellow)}
+.sync-btn.error{border-color:var(--red);color:var(--red)}
+.sync-panel{position:fixed;inset:0;z-index:60;background:rgba(5,8,14,.88);padding:20px 12px;overflow-y:auto}
+.sync-panel-inner{max-width:650px;margin:20px auto;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px}
+.sync-panel-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.sync-panel-title{font-size:19px;font-weight:900}
+.sync-line{border:1px solid var(--border);border-radius:12px;background:var(--card-2);padding:12px;margin-top:9px}
+.sync-line-title{font-size:13px;font-weight:750;overflow-wrap:anywhere}
+.sync-line-detail{color:var(--muted);font-size:12px;margin-top:5px;overflow-wrap:anywhere}
+.sync-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.sync-action{padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text);font-size:12px;cursor:pointer}
+.sync-action.primary{border-color:var(--accent);color:var(--accent)}
+.sync-action.danger{border-color:var(--red);color:var(--red)}
+.sync-hint{color:var(--muted);font-size:12px;line-height:1.5;margin-top:10px}
+.local-chip{color:var(--yellow);border-color:rgba(255,214,10,.4)}
+.error-chip{color:var(--red);border-color:rgba(255,69,58,.4)}
+.saving-chip{color:var(--blue);border-color:rgba(0,212,255,.4)}
+.storage-alert{background:rgba(255,69,58,.1);color:var(--red);border:1px solid var(--red);padding:10px 14px;font-size:12px;text-align:center}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -137,15 +157,26 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
       <div class="header-title">📗 Мобильный журнал</div>
       <div class="header-sub">оценки по студенту — за все даты сразу</div>
     </div>
+    <button id="sync-btn" class="sync-btn" onclick="toggleQueuePanel()" title="Очередь отправки">Подготовка…</button>
     <button class="icon-btn" onclick="refresh()" title="Обновить">⟳</button>
   </div>
 </header>
 
+<div id="storage-alert" class="storage-alert" hidden></div>
+<div id="queue-panel" class="sync-panel" hidden>
+  <div class="sync-panel-inner">
+    <div class="sync-panel-header">
+      <div class="sync-panel-title">Очередь синхронизации</div>
+      <button class="icon-btn" onclick="toggleQueuePanel(false)" title="Закрыть">✕</button>
+    </div>
+    <div id="queue-content"></div>
+  </div>
+</div>
 <main id="app"></main>
 
 <div id="sendbar">
   <div id="send-info" class="send-info">Отметьте оценки</div>
-  <button id="send-btn" onclick="sendGrades()" disabled>Отправить</button>
+  <button id="send-btn" onclick="sendGrades()" disabled>Отправить в очередь</button>
 </div>
 <div id="toast"></div>
 
@@ -159,16 +190,28 @@ const state = {
   search: '',
   group: null,          // {group, subjectCode, subjectName}
   data: null,           // {students, lessons}
+  groupCache: new Map(), // уже загруженные группы текущей вкладки
   studentSearch: '',
   subFilter: '',        // '' | '1' | '2'
   studentIdx: -1,       // индекс студента в data.students
-  pending: new Map(),   // lessonIndex -> оценка '2'..'5'
+  drafts: new Map(),    // ключ ячейки -> локально сохранённый черновик
+  outbox: [],           // долговременная очередь отправки
+  storageReady: false,
+  storageIssue: '',
+  syncing: false,
+  lastSyncError: '',
+  queueOpen: false,
   loading: false,
   sending: false,
   error: ''
 };
 
 const $app = document.getElementById('app');
+const STORAGE_NAME = 'mobile-journal-grade-queue-v1';
+let storageDB = null;
+let draftWriteChain = Promise.resolve();
+let syncTimer = null;
+let retryDelay = 1500;
 
 /* ---------- утилиты ---------- */
 function escapeHtml(v){
@@ -177,11 +220,12 @@ function escapeHtml(v){
 }
 function isConfigured(){ return /^https:\/\//.test(APPS_SCRIPT_URL); }
 
-async function api(action, payload){
+async function api(action, payload, options = {}){
   const res = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ action }, payload || {}))
+    body: JSON.stringify(Object.assign({ action }, payload || {})),
+    signal: options.signal
   });
   if(!res.ok) throw new Error('HTTP ' + res.status);
   return await res.json();
@@ -221,6 +265,306 @@ function relevantLabel(s){
   return 'Все занятия';
 }
 
+/* ---------- надёжное локальное хранение ---------- */
+function cellKey(group, subjectCode, row, lessonIndex){
+  return JSON.stringify([group, subjectCode, Number(row), Number(lessonIndex)]);
+}
+function operationCellKey(op){
+  return cellKey(op.group, op.subjectCode, op.studentRow, op.lessonIndex);
+}
+function selectedStudent(){
+  return state.data?.students?.[state.studentIdx] || null;
+}
+function currentDrafts(){
+  const student = selectedStudent();
+  if(!student || !state.group) return [];
+  return [...state.drafts.values()].filter(d =>
+    d.group === state.group.group && d.subjectCode === state.group.subjectCode &&
+    d.studentRow === student.row
+  );
+}
+function latestQueuedGrade(key){
+  for(let i = state.outbox.length - 1; i >= 0; i--){
+    if(operationCellKey(state.outbox[i]) === key) return state.outbox[i];
+  }
+  return null;
+}
+function effectiveGrade(lesson, studentIndex){
+  const student = state.data?.students?.[studentIndex];
+  if(!student || !state.group) return '';
+  const key = cellKey(state.group.group, state.group.subjectCode, student.row, lesson.index);
+  const draft = state.drafts.get(key);
+  if(draft) return String(draft.value);
+  const queued = latestQueuedGrade(key);
+  if(queued) return String(queued.value);
+  return String(lesson.grades[studentIndex] ?? '').trim();
+}
+function openStorage(){
+  return new Promise((resolve, reject) => {
+    if(!('indexedDB' in window)) { reject(new Error('IndexedDB недоступна')); return; }
+    const request = indexedDB.open(STORAGE_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if(!db.objectStoreNames.contains('drafts')) db.createObjectStore('drafts', { keyPath: 'key' });
+      if(!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'localId', autoIncrement: true });
+    };
+    request.onsuccess = () => { storageDB = request.result; resolve(); };
+    request.onerror = () => reject(request.error || new Error('Не удалось открыть IndexedDB'));
+    request.onblocked = () => reject(new Error('Закройте другие вкладки журнала и повторите попытку'));
+  });
+}
+function storageTransaction(storeNames, mode, action){
+  return new Promise((resolve, reject) => {
+    if(!storageDB) { reject(new Error('Локальная база не открыта')); return; }
+    const tx = storageDB.transaction(storeNames, mode);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('Ошибка записи в браузере'));
+    tx.onabort = () => reject(tx.error || new Error('Запись прервана'));
+    try { action(tx); } catch(error) { try { tx.abort(); } catch(_) {} reject(error); }
+  });
+}
+function storageReadAll(storeName){
+  return new Promise((resolve, reject) => {
+    const tx = storageDB.transaction([storeName], 'readonly');
+    const request = tx.objectStore(storeName).getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Ошибка чтения IndexedDB'));
+  });
+}
+async function reloadLocalStorage(){
+  const [drafts, outbox] = await Promise.all([storageReadAll('drafts'), storageReadAll('outbox')]);
+  state.drafts = new Map(drafts.map(d => [d.key, d]));
+  state.outbox = outbox.sort((a,b) => a.localId - b.localId);
+  renderSyncStatus();
+}
+function reportStorageError(error){
+  state.storageIssue = String(error?.message || error);
+  state.storageReady = false;
+  const banner = document.getElementById('storage-alert');
+  banner.textContent = '⚠️ Локальная запись недоступна: ' + state.storageIssue + '. Не продолжайте ввод без устранения ошибки.';
+  banner.hidden = false;
+  toast('Ошибка локального сохранения', 'err');
+  renderSyncStatus();
+}
+function persistDraft(key, draft){
+  draftWriteChain = draftWriteChain.catch(() => {}).then(() =>
+    storageTransaction(['drafts'], 'readwrite', tx => {
+      if(draft) tx.objectStore('drafts').put(draft);
+      else tx.objectStore('drafts').delete(key);
+    })
+  );
+  draftWriteChain.catch(reportStorageError);
+  return draftWriteChain;
+}
+function renderSyncStatus(){
+  const btn = document.getElementById('sync-btn');
+  if(!btn) return;
+  const n = state.outbox.length;
+  const issues = state.outbox.filter(o => o.status === 'conflict' || o.status === 'invalid').length;
+  btn.className = 'sync-btn' + (issues || state.storageIssue ? ' error' : n ? ' attention' : '');
+  if(state.storageIssue) btn.textContent = '⚠️ Ошибка памяти';
+  else if(!state.storageReady) btn.textContent = 'Подготовка…';
+  else if(issues) btn.textContent = `⚠️ Проблем: ${issues}`;
+  else if(n && !navigator.onLine) btn.textContent = `Офлайн · ${n}`;
+  else if(n && state.syncing) btn.textContent = `↻ Отправка · ${n}`;
+  else if(n) btn.textContent = `Очередь · ${n}`;
+  else if(state.drafts.size) btn.textContent = `Черновики · ${state.drafts.size}`;
+  else btn.textContent = '✓ Всё отправлено';
+  if(state.queueOpen) renderQueuePanel();
+}
+function toggleQueuePanel(force){
+  state.queueOpen = typeof force === 'boolean' ? force : !state.queueOpen;
+  document.getElementById('queue-panel').hidden = !state.queueOpen;
+  if(state.queueOpen) renderQueuePanel();
+}
+function renderQueuePanel(){
+  const container = document.getElementById('queue-content');
+  const drafts = state.drafts.size;
+  const queued = state.outbox.filter(o => o.status === 'queued').length;
+  const problems = state.outbox.filter(o => o.status !== 'queued').length;
+  const entries = state.outbox.map(op => {
+    const isConflict = op.status === 'conflict';
+    const isInvalid = op.status === 'invalid';
+    const status = isConflict ? '⚠️ Конфликт' : isInvalid ? '❌ Отклонено' : '⏳ Ожидает отправки';
+    const label = `${op.studentSurname} ${op.studentName} · ${op.lessonDate || 'Без даты'} · ${op.lessonType || 'Занятие'}`;
+    return `<div class="sync-line">
+      <div class="sync-line-title">${escapeHtml(label)}</div>
+      <div class="sync-line-detail">${escapeHtml(op.group)} · ${status} · оценка: ${escapeHtml(op.value)}</div>
+      ${op.error ? `<div class="sync-line-detail" style="color:var(--red)">${escapeHtml(op.error)}</div>` : ''}
+      ${(isConflict || isInvalid) ? `<div class="sync-actions">
+        ${isConflict && op.reason === 'value_conflict' ? `<button class="sync-action primary" onclick="resolveQueueOperation(${op.localId},'mine')">Записать мою оценку</button>` : ''}
+        <button class="sync-action danger" onclick="resolveQueueOperation(${op.localId},'discard')">Отменить изменение</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+  container.innerHTML = `
+    <div class="sync-line-detail">Черновиков: ${drafts} · В очереди: ${queued} · Требуют решения: ${problems}</div>
+    ${state.lastSyncError ? `<div class="sync-line-detail" style="color:var(--yellow)">Последняя ошибка связи: ${escapeHtml(state.lastSyncError)}</div>` : ''}
+    <div class="sync-actions">
+      <button class="sync-action primary" onclick="scheduleSync(0)">↻ Повторить отправку</button>
+      <button class="sync-action" onclick="downloadQueueBackup()">↓ Скачать резервную копию</button>
+      <button class="sync-action" onclick="document.getElementById('backup-import').click()">↑ Восстановить из копии</button>
+      <input id="backup-import" type="file" accept="application/json,.json" hidden onchange="importQueueBackup(this.files[0]);this.value=''">
+    </div>
+    <div class="sync-hint">Черновики и очередь сохраняются в этом браузере. Не очищайте данные сайта до завершения синхронизации. Резервная копия содержит персональные данные студентов.</div>
+    ${entries || '<div class="empty">Неотправленных оценок нет.</div>'}`;
+}
+function downloadQueueBackup(){
+  const snapshot = { version: 1, exportedAt: new Date().toISOString(), drafts: [...state.drafts.values()], outbox: state.outbox };
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'journal_unsent_backup_' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function importQueueBackup(file){
+  if(!file || !state.storageReady) return;
+  try {
+    if(file.size > 5 * 1024 * 1024) throw new Error('Резервная копия слишком большая');
+    const backup = JSON.parse(await file.text());
+    if(backup.version !== 1 || !Array.isArray(backup.drafts) || !Array.isArray(backup.outbox)) {
+      throw new Error('Неизвестный формат резервной копии');
+    }
+    if(backup.drafts.length + backup.outbox.length > 5000) throw new Error('Слишком много записей');
+    const validGrade = value => ['2','3','4','5'].includes(String(value));
+    if(backup.drafts.some(d => !d.key || !validGrade(d.value)) ||
+       backup.outbox.some(o => !/^[a-f0-9-]{36}$/i.test(String(o.id)) || !validGrade(o.value))) {
+      throw new Error('Резервная копия содержит повреждённые записи');
+    }
+    if(!confirm(`Восстановить ${backup.drafts.length} черновиков и ${backup.outbox.length} записей очереди? Существующие записи не будут удалены.`)) return;
+    const known = new Set(state.outbox.map(o => o.id));
+    await storageTransaction(['drafts','outbox'], 'readwrite', tx => {
+      backup.drafts.forEach(d => {
+        if(!state.drafts.has(d.key)) tx.objectStore('drafts').put(d);
+      });
+      backup.outbox.forEach(o => {
+        if(!known.has(o.id)) {
+          const restored = { ...o };
+          delete restored.localId;
+          tx.objectStore('outbox').add(restored);
+          known.add(o.id);
+        }
+      });
+    });
+    await reloadLocalStorage();
+    render();
+    scheduleSync(0);
+    toast('Резервная копия восстановлена', 'ok');
+  } catch(error) {
+    toast('Ошибка импорта: ' + String(error?.message || error), 'err');
+  }
+}
+async function resolveQueueOperation(localId, action){
+  const op = state.outbox.find(item => item.localId === Number(localId));
+  if(!op) return;
+  try {
+    if(action === 'mine'){
+      if(op.reason !== 'value_conflict') return;
+      const updated = { ...op, expectedValue: op.currentValue, status: 'queued', error: '', reason: '' };
+      await storageTransaction(['outbox'], 'readwrite', tx => tx.objectStore('outbox').put(updated));
+    } else if(action === 'discard'){
+      if(!confirm('Удалить это изменение и все последующие изменения той же оценки из локальной очереди?')) return;
+      const key = operationCellKey(op);
+      const related = state.outbox.filter(item => operationCellKey(item) === key);
+      await storageTransaction(['outbox','drafts'], 'readwrite', tx => {
+        related.forEach(item => tx.objectStore('outbox').delete(item.localId));
+        tx.objectStore('drafts').delete(key);
+      });
+    }
+    await reloadLocalStorage();
+    render();
+    scheduleSync(0);
+  } catch(error) { reportStorageError(error); }
+}
+
+/* ---------- отправка очереди в фоне ---------- */
+function scheduleSync(delay = 0){
+  if(syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { syncTimer = null; processQueue(); }, delay);
+}
+function buildNextBatch(){
+  const seen = new Set();
+  const batch = [];
+  let group = null;
+  for(const op of state.outbox){
+    const key = operationCellKey(op);
+    if(seen.has(key)) continue;
+    seen.add(key); // последующие изменения той же ячейки ждут подтверждения первого
+    if(op.status !== 'queued') continue;
+    if(!group) group = { group: op.group, subjectCode: op.subjectCode };
+    if(op.group !== group.group || op.subjectCode !== group.subjectCode) continue;
+    batch.push(op);
+    if(batch.length >= 30) break;
+  }
+  return group ? { ...group, batch } : null;
+}
+function markConfirmedGrade(op){
+  const cached = state.groupCache.get(JSON.stringify([op.group, op.subjectCode]));
+  const groupData = cached || ((state.group?.group === op.group && state.group?.subjectCode === op.subjectCode) ? state.data : null);
+  if(!groupData) return;
+  const lesson = groupData.lessons.find(l => l.id === op.lessonId);
+  const idx = groupData.students.findIndex(s => op.studentCode
+    ? s.code === op.studentCode
+    : s.surname === op.studentSurname && s.name === op.studentName && s.subgroup === op.studentSubgroup);
+  if(lesson && idx >= 0) lesson.grades[idx] = op.value;
+}
+async function processQueue(){
+  if(!state.storageReady || state.syncing) return;
+  const next = buildNextBatch();
+  if(!next) { renderSyncStatus(); return; }
+  if(!navigator.onLine) { state.lastSyncError = 'Нет интернет-соединения'; renderSyncStatus(); return; }
+
+  state.syncing = true;
+  renderSyncStatus();
+  const aborter = new AbortController();
+  const timeout = setTimeout(() => aborter.abort(), 25000);
+  try {
+    const response = await api('submitQueuedGrades', {
+      group: next.group,
+      subjectCode: next.subjectCode,
+      operations: next.batch.map(op => ({
+        id: op.id, studentRow: op.studentRow, studentCode: op.studentCode,
+        studentSurname: op.studentSurname, studentName: op.studentName,
+        studentSubgroup: op.studentSubgroup, lessonId: op.lessonId,
+        lessonIndex: op.lessonIndex, lessonType: op.lessonType,
+        lessonDate: op.lessonDate, expectedValue: op.expectedValue, value: op.value
+      }))
+    }, { signal: aborter.signal });
+    if(!response.success || !Array.isArray(response.results)){
+      throw new Error(response.error || 'Некорректный ответ сервера');
+    }
+    const answers = new Map(response.results.map(result => [result.id, result]));
+    if(next.batch.some(op => !answers.has(op.id))) throw new Error('Сервер подтвердил не все операции');
+
+    await storageTransaction(['outbox'], 'readwrite', tx => {
+      next.batch.forEach(op => {
+        const answer = answers.get(op.id);
+        if(answer.status === 'saved') tx.objectStore('outbox').delete(op.localId);
+        else tx.objectStore('outbox').put({ ...op,
+          status: answer.status === 'conflict' ? 'conflict' : 'invalid',
+          reason: answer.reason || '', error: answer.error || 'Сервер отклонил запись',
+          currentValue: answer.currentValue ?? ''
+        });
+      });
+    });
+    next.batch.forEach(op => { if(answers.get(op.id).status === 'saved') markConfirmedGrade(op); });
+    await reloadLocalStorage();
+    state.lastSyncError = '';
+    retryDelay = 1500;
+    render();
+    if(buildNextBatch()) scheduleSync(80);
+  } catch(error){
+    state.lastSyncError = error?.name === 'AbortError' ? 'Превышено время ожидания' : String(error?.message || error);
+    retryDelay = Math.min(Math.round(retryDelay * 1.8), 60000);
+    scheduleSync(retryDelay + Math.floor(Math.random() * 500));
+  } finally {
+    clearTimeout(timeout);
+    state.syncing = false;
+    renderSyncStatus();
+  }
+}
+
 /* ---------- загрузка ---------- */
 async function loadGroups(){
   state.loading = true; state.error = ''; state.screen = 'groups'; render();
@@ -239,24 +583,40 @@ async function selectGroup(i){
   state.subFilter = '';
   state.studentSearch = '';
   state.studentIdx = -1;
-  state.pending = new Map();
   state.screen = 'students';
-  await loadGroupData();
+  state.data = state.groupCache.get(JSON.stringify([g.group, g.subjectCode])) || null;
+  if(state.data){
+    state.loading = false;
+    state.error = '';
+    render();
+    if(navigator.onLine) loadGroupData(true);
+  }else{
+    await loadGroupData();
+  }
 }
 
-async function loadGroupData(){
-  state.loading = true; state.error = ''; render();
+async function loadGroupData(silent = false){
+  if(!silent){ state.loading = true; state.error = ''; render(); }
+  const selected = state.group;
+  if(!selected) return;
   try{
     const res = await api('getGroupData', {
-      group: state.group.group,
-      subjectCode: state.group.subjectCode
+      group: selected.group,
+      subjectCode: selected.subjectCode
     });
     if(!res.success) throw new Error(res.error || 'Ошибка загрузки');
+    if(state.group !== selected) return;
     state.data = res;
+    state.groupCache.set(JSON.stringify([selected.group, selected.subjectCode]), res);
     if(state.studentIdx >= res.students.length) state.studentIdx = -1;
   }catch(e){
-    state.error = e.message;
-    state.data = null;
+    if(state.group !== selected) return;
+    if(state.data){
+      state.error = '';
+      if(!silent) toast('Нет соединения. Показаны ранее загруженные данные.', 'err');
+    }else{
+      state.error = e.message;
+    }
   }
   state.loading = false; render();
 }
@@ -264,17 +624,16 @@ async function loadGroupData(){
 function backToGroups(){
   state.screen = 'groups';
   state.group = null; state.data = null;
-  state.studentIdx = -1; state.pending = new Map();
+  state.studentIdx = -1;
   render();
 }
 function backToStudents(){
   state.screen = 'students';
-  state.studentIdx = -1; state.pending = new Map();
+  state.studentIdx = -1;
   render();
 }
 function openStudent(i){
   state.studentIdx = i;
-  state.pending = new Map();
   state.screen = 'student';
   render();
   window.scrollTo(0, 0);
@@ -291,7 +650,7 @@ function studentSummary(pos){
   const rel = state.data.lessons.filter(l => !isLocked(l.type, s.subgroup));
   let graded = 0, sum = 0, cnt = 0, abs = 0;
   rel.forEach(l => {
-    const g = String(l.grades[pos] || '').trim().toLowerCase();
+    const g = effectiveGrade(l, pos).toLowerCase();
     if(g === 'н' || g === 'нб'){ abs++; return; }
     if(g !== ''){
       graded++;
@@ -304,8 +663,28 @@ function studentSummary(pos){
 
 /* ---------- логика оценок ---------- */
 function tapGrade(lessonIndex, g){
-  if(state.pending.get(lessonIndex) === g) state.pending.delete(lessonIndex);
-  else state.pending.set(lessonIndex, g);
+  if(state.sending){ toast('Завершается локальное сохранение, повторите действие', 'err'); return; }
+  if(!state.storageReady){ toast('Невозможно сохранить оценку в браузере', 'err'); return; }
+  const student = selectedStudent();
+  const lesson = state.data?.lessons?.find(l => l.index === lessonIndex);
+  if(!student || !lesson) return;
+  const key = cellKey(state.group.group, state.group.subjectCode, student.row, lessonIndex);
+  const existing = state.drafts.get(key);
+  if(existing?.value === g){
+    state.drafts.delete(key);
+    persistDraft(key, null);
+  } else {
+    const draft = {
+      key, group: state.group.group, subjectCode: state.group.subjectCode,
+      studentRow: student.row, studentCode: student.code || '',
+      studentSurname: student.surname, studentName: student.name,
+      studentSubgroup: student.subgroup || '', lessonId: lesson.id || '',
+      lessonIndex, lessonType: lesson.type, lessonDate: lesson.date,
+      value: g, updatedAt: Date.now()
+    };
+    state.drafts.set(key, draft);
+    persistDraft(key, draft);
+  }
   render();
 }
 function setSubFilter(f){
@@ -314,51 +693,46 @@ function setSubFilter(f){
 }
 
 async function sendGrades(){
-  if(state.sending) return;
+  if(state.sending || !state.storageReady) return;
   const student = state.data?.students?.[state.studentIdx];
   if(!student) return;
-  const grades = [];
-  state.pending.forEach((value, lessonIndex) => grades.push({ lessonIndex, value }));
-  if(!grades.length) return;
+  const drafts = currentDrafts();
+  if(!drafts.length) return;
+  if(drafts.some(d => !d.lessonId)){
+    toast('Сначала обновите Code.gs: не получены ID занятий', 'err');
+    return;
+  }
+  const studentIndex = state.studentIdx;
+  const snapshotData = state.data;
+  const expectedByKey = new Map(drafts.map(d => {
+    const last = latestQueuedGrade(d.key);
+    const lesson = snapshotData.lessons.find(l => l.index === d.lessonIndex);
+    return [d.key, last ? last.value : String(lesson?.grades[studentIndex] ?? '').trim()];
+  }));
 
   state.sending = true; renderSendbar();
   try{
-    let written = 0, errs = [];
-    const res = await api('submitStudentGrades', {
-      group: state.group.group,
-      subjectCode: state.group.subjectCode,
-      studentRow: student.row,
-      grades
+    await draftWriteChain; // нельзя отправить до подтверждения локальной записи
+    const operations = drafts.map(d => {
+      return {
+        ...d, id: crypto.randomUUID(), expectedValue: expectedByKey.get(d.key),
+        status: 'queued', queuedAt: Date.now(), error: '', reason: ''
+      };
     });
-
-    if(res.success){
-      written = res.written;
-      errs = res.errors || [];
-    } else if(/неизвестн/i.test(res.error || '')){
-      // Запасной режим для старой версии скрипта: по одному запросу на занятие
-      for(const item of grades){
-        const r = await api('submitGrades', {
-          group: state.group.group,
-          subjectCode: state.group.subjectCode,
-          lessonIndex: item.lessonIndex,
-          grades: [{ row: student.row, value: item.value }]
-        });
-        if(r.success) written += r.written;
-        else errs.push(r.error || 'ошибка');
-      }
-    } else {
-      throw new Error(res.error || 'Ошибка сохранения');
-    }
-
-    state.pending = new Map();
-    let msg = `✅ Сохранено оценок: ${written}`;
-    if(errs.length) msg += ` · пропущено: ${errs.length}`;
-    toast(msg, 'ok');
-    await loadGroupData();
+    // Добавление операций и удаление черновиков — одна транзакция IndexedDB.
+    await storageTransaction(['drafts', 'outbox'], 'readwrite', tx => {
+      operations.forEach(op => {
+        tx.objectStore('outbox').add(op);
+        tx.objectStore('drafts').delete(op.key);
+      });
+    });
+    await reloadLocalStorage();
+    toast(`✓ ${operations.length} оценок в очереди. Можно продолжать работу.`, 'ok');
+    scheduleSync(0);
   }catch(e){
-    toast('❌ ' + e.message, 'err');
+    reportStorageError(e);
   }
-  state.sending = false; renderSendbar();
+  state.sending = false; render();
 }
 
 /* ---------- рендер ---------- */
@@ -369,13 +743,14 @@ function render(){
   else if(state.screen === 'students') renderStudents();
   else renderStudent();
   renderSendbar();
+  renderSyncStatus();
 }
 
 function renderSetup(){
   $app.innerHTML = `
     <div class="screen-title">Настройка</div>
     <div class="card setup">
-      <p><b>1.</b> Добавьте блок «Мобильный API» в <code>Code.gs</code> вашей таблицы и разверните веб-приложение (доступ — «Все»).</p>
+      <p><b>1.</b> Установите обновлённый <code>Code.gs</code> и настройте безопасный доступ к веб-приложению.</p>
       <p><b>2.</b> Скопируйте URL веб-приложения (заканчивается на <code>/exec</code>).</p>
       <p><b>3.</b> Вставьте его в константу <code>APPS_SCRIPT_URL</code> в начале скрипта этого файла.</p>
     </div>`;
@@ -411,7 +786,7 @@ function renderGroups(){
       value="${escapeHtml(state.search)}" oninput="onSearch(this.value)">
     ${state.loading ? spinnerHTML() : ''}
     ${state.error ? errorHTML() : ''}
-    <div class="list" id="group-list">${state.loading || state.error ? '' : groupListHTML()}</div>`;
+    <div class="list" id="group-list">${state.loading || (state.error && !state.groups.length) ? '' : groupListHTML()}</div>`;
 }
 
 /* --- экран 2: студенты --- */
@@ -468,8 +843,17 @@ function renderStudents(){
 
 /* --- экран 3: занятия студента --- */
 function lessonHTML(l, pos){
-  const saved = String(l.grades[pos] || '').trim();
-  const pendingVal = state.pending.get(l.index);
+  const saved = String(l.grades[pos] ?? '').trim();
+  const s = state.data.students[pos];
+  const key = cellKey(state.group.group, state.group.subjectCode, s.row, l.index);
+  const draft = state.drafts.get(key);
+  const queued = latestQueuedGrade(key);
+  const pendingVal = draft?.value || queued?.value || '';
+  const statusChip = draft
+    ? '<span class="chip local-chip">Черновик в браузере</span>'
+    : queued?.status === 'conflict' || queued?.status === 'invalid'
+      ? '<span class="chip error-chip">Требует проверки</span>'
+      : queued ? '<span class="chip saving-chip">В очереди на отправку</span>' : '';
   const tClass =
     l.type === 'П1' ? 't-P1' :
     l.type === 'П2' ? 't-P2' :
@@ -480,7 +864,8 @@ function lessonHTML(l, pos){
     <div class="student-top">
       <span class="tb ${tClass}">${escapeHtml(l.type || '—')}</span>
       <span class="lesson-date">${escapeHtml(l.date || 'без даты')}</span>
-      ${saved ? `<span class="chip">сейчас: ${escapeHtml(saved)}</span>` : ''}
+      ${saved ? `<span class="chip">в Sheets: ${escapeHtml(saved)}</span>` : ''}
+      ${statusChip}
     </div>
     <div class="grades">
       ${['2','3','4','5'].map(g =>
@@ -533,19 +918,34 @@ function renderSendbar(){
     state.data && state.studentIdx >= 0;
   bar.style.display = visible ? 'flex' : 'none';
   if(!visible) return;
-  const n = state.pending.size;
+  const n = currentDrafts().length;
   const s = state.data.students[state.studentIdx];
   document.getElementById('send-info').textContent =
-    n ? `${s.surname}: будет записано оценок — ${n}` : 'Отметьте оценки за нужные даты';
+    n ? `${s.surname}: черновиков — ${n}` : 'Оценки можно редактировать и во время отправки очереди';
   const btn = document.getElementById('send-btn');
-  btn.disabled = n === 0 || state.sending;
-  btn.textContent = state.sending ? 'Сохранение…' : `Отправить${n ? ` (${n})` : ''}`;
+  btn.disabled = n === 0 || state.sending || !state.storageReady;
+  btn.textContent = state.sending ? 'Сохранение в браузере…' : `Отправить в очередь${n ? ` (${n})` : ''}`;
 }
 
 /* ---------- старт ---------- */
-window.addEventListener('DOMContentLoaded', () => {
-  if(isConfigured()) loadGroups(); else render();
+window.addEventListener('DOMContentLoaded', async () => {
+  if(!isConfigured()){ render(); return; }
+  try {
+    await openStorage();
+    await reloadLocalStorage();
+    state.storageReady = true;
+    if(navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+    scheduleSync(0);
+  } catch(error) { reportStorageError(error); }
+  renderSyncStatus();
+  loadGroups();
 });
+window.addEventListener('online', () => { renderSyncStatus(); scheduleSync(0); });
+window.addEventListener('offline', () => renderSyncStatus());
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden) scheduleSync(0);
+});
+setInterval(() => { if(state.storageReady && buildNextBatch()) scheduleSync(0); }, 30000);
 </script>
 </body>
 </html>
