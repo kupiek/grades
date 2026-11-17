@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0e14">
 <title>Мобильный журнал — оценки</title>
+<script>
+// Применяем тему до отрисовки страницы, чтобы не было вспышки стандартного оформления.
+(() => {
+  const names = ['default', 'win98', 'business'];
+  let saved = 'default';
+  try { saved = localStorage.getItem('mobile-journal-theme-v1') || 'default'; } catch (_) {}
+  const chosen = names.includes(saved) ? saved : 'default';
+  document.documentElement.dataset.theme = chosen;
+  document.querySelector('meta[name="theme-color"]').content =
+    chosen === 'win98' ? '#000080' : chosen === 'business' ? '#ffffff' : '#0b0e14';
+})();
+</script>
 <style>
 :root{
   --bg:#0b0e14; --card:#141926; --card-2:#1a2032; --border:#252d44;
@@ -146,6 +158,113 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
 .error-chip{color:var(--red);border-color:rgba(255,69,58,.4)}
 .saving-chip{color:var(--blue);border-color:rgba(0,212,255,.4)}
 .storage-alert{background:rgba(255,69,58,.1);color:var(--red);border:1px solid var(--red);padding:10px 14px;font-size:12px;text-align:center}
+
+/* ---- переключение оформления ---- */
+.theme-panel{position:fixed;inset:0;z-index:70;background:rgba(4,9,20,.76);padding:20px 12px;overflow-y:auto;display:flex;align-items:center;justify-content:center}
+.theme-panel-inner{width:min(100%,540px);max-height:calc(100dvh - 40px);overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 24px 80px rgba(0,0,0,.3)}
+.theme-panel-header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:6px}
+.theme-panel-title{font-size:20px;font-weight:850}
+.theme-panel-subtitle{color:var(--muted);font-size:12px;line-height:1.5;margin-bottom:16px}
+.theme-options{display:grid;gap:10px}
+.theme-choice{display:grid;grid-template-columns:95px minmax(0,1fr) 22px;align-items:center;gap:14px;padding:12px;width:100%;border:1px solid var(--border);border-radius:12px;background:var(--card-2);color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:border-color .16s,background .16s,transform .16s}
+.theme-choice:hover{border-color:var(--accent)}
+.theme-choice:active{transform:scale(.99)}
+.theme-choice[aria-pressed="true"]{border-color:var(--accent);outline:1px solid var(--accent);background:var(--accent-soft)}
+.theme-choice-name{display:block;font-size:14px;font-weight:850}
+.theme-choice-desc{display:block;color:var(--muted);font-size:11px;line-height:1.35;margin-top:4px}
+.theme-choice-check{color:var(--accent);font-size:20px;font-weight:900;opacity:0}
+.theme-choice[aria-pressed="true"] .theme-choice-check{opacity:1}
+.theme-preview{height:65px;display:flex;flex-direction:column;padding:6px;border-radius:6px;border:1px solid;overflow:hidden;gap:5px}
+.theme-preview-bar{height:10px;flex-shrink:0;border-radius:2px}
+.theme-preview-cols{display:flex;gap:5px;flex:1}
+.theme-preview-tile{flex:1;border:1px solid;border-radius:3px}
+.theme-preview-tile:last-child{flex:.55}
+.preview-default{background:#0b0e14;border-color:#252d44}
+.preview-default .theme-preview-bar{background:linear-gradient(90deg,#00ff88 20%,#141926 20%)}
+.preview-default .theme-preview-tile{background:#141926;border-color:#252d44}
+.preview-win98{background:#c0c0c0;border-color:#fff;border-radius:0;box-shadow:inset -2px -2px #404040}
+.preview-win98 .theme-preview-bar{background:linear-gradient(90deg,#000080,#1084d0);border-radius:0}
+.preview-win98 .theme-preview-tile{background:#d4d0c8;border-color:#777;border-radius:0;box-shadow:inset 1px 1px #fff}
+.preview-business{background:#f3f6fb;border-color:#d4dfed}
+.preview-business .theme-preview-bar{background:linear-gradient(90deg,#173969 20%,#fff 20%)}
+.preview-business .theme-preview-tile{background:#fff;border-color:#d4dfed}
+.theme-btn{font-size:20px}
+
+/* ---- анимации только при переходах между экранами ---- */
+@keyframes journalPageForward{from{opacity:.12;transform:translate3d(16px,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes journalPageBack{from{opacity:.12;transform:translate3d(-16px,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+#app.page-enter-forward{animation:journalPageForward .24s cubic-bezier(.2,.8,.2,1) both}
+#app.page-enter-back{animation:journalPageBack .24s cubic-bezier(.2,.8,.2,1) both}
+@media (prefers-reduced-motion:reduce){#app.page-enter-forward,#app.page-enter-back{animation:none!important}.theme-choice{transition:none!important}}
+
+/* ---- Windows 98: серый интерфейс, объёмные кнопки, квадратные элементы ---- */
+:root[data-theme="win98"]{
+  --bg:#d4d0c8;--card:#c0c0c0;--card-2:#d4d0c8;--border:#747474;
+  --text:#111;--muted:#414141;--accent:#000080;--accent-soft:#e2e2fa;
+  --blue:#075d91;--yellow:#896000;--red:#ab1521;--purple:#66318b;--orange:#9a5300;
+  color-scheme:light;
+}
+[data-theme="win98"] body{font-family:Tahoma,'MS Sans Serif',Arial,sans-serif;font-size:13px}
+[data-theme="win98"] header{background:linear-gradient(90deg,#000080,#1084d0);border-bottom:2px solid #fff;backdrop-filter:none;box-shadow:0 2px 0 #666}
+[data-theme="win98"] .header-title,[data-theme="win98"] header .header-sub{color:#fff}
+[data-theme="win98"] .header-title{font-weight:750}
+[data-theme="win98"] .card,[data-theme="win98"] .stat-mini,[data-theme="win98"] .icon-btn,[data-theme="win98"] .sync-btn,[data-theme="win98"] .seg button,[data-theme="win98"] .grade-btn,[data-theme="win98"] .search,[data-theme="win98"] .sync-action,[data-theme="win98"] .theme-choice{
+  border-radius:0;border:2px solid;border-color:#fff #515151 #515151 #fff;box-shadow:inset 1px 1px #e6e6e6,1px 1px 0 #aaa;
+}
+[data-theme="win98"] .list-item:active,[data-theme="win98"] .grade-btn:active,[data-theme="win98"] .icon-btn:active,[data-theme="win98"] .seg button:active{border-color:#515151 #fff #fff #515151;box-shadow:inset 1px 1px #aaa}
+[data-theme="win98"] .screen-title{font-weight:800}
+[data-theme="win98"] .search{background:#fff;box-shadow:inset 1px 1px #666}
+[data-theme="win98"] .seg button.on{color:#000080;background:#e5e5ff;border-color:#515151 #fff #fff #515151}
+[data-theme="win98"] .badge,[data-theme="win98"] .tb,[data-theme="win98"] .chip{border-radius:0}
+[data-theme="win98"] .grade-btn.g5.active{background:#d4ead4;color:#126225;box-shadow:inset 1px 1px #777}
+[data-theme="win98"] .grade-btn.g4.active{background:#dce9f5;color:#075d91;box-shadow:inset 1px 1px #777}
+[data-theme="win98"] .grade-btn.g3.active{background:#f6edbc;color:#896000;box-shadow:inset 1px 1px #777}
+[data-theme="win98"] .grade-btn.g2.active{background:#f9d8d8;color:#ab1521;box-shadow:inset 1px 1px #777}
+[data-theme="win98"] #sendbar{background:#c0c0c0;backdrop-filter:none;border-top:2px solid #fff}
+[data-theme="win98"] #send-btn{background:#c0c0c0;color:#111;border:2px solid;border-color:#fff #515151 #515151 #fff;border-radius:0;box-shadow:inset 1px 1px #e6e6e6}
+[data-theme="win98"] #send-btn:active{border-color:#515151 #fff #fff #515151}
+[data-theme="win98"] #toast,[data-theme="win98"] .sync-panel-inner,[data-theme="win98"] .theme-panel-inner,[data-theme="win98"] .sync-line{border-radius:0;background:#c0c0c0;backdrop-filter:none}
+[data-theme="win98"] .sync-panel,[data-theme="win98"] .theme-panel{background:rgba(0,0,0,.43)}
+[data-theme="win98"] .sync-panel-header,[data-theme="win98"] .theme-panel-header{background:linear-gradient(90deg,#000080,#1084d0);color:#fff;padding:5px 8px;margin:-9px -9px 12px}
+[data-theme="win98"] .sync-panel-header .icon-btn,[data-theme="win98"] .theme-panel-header .icon-btn{height:29px;width:29px;color:#111}
+[data-theme="win98"] .theme-choice{background:#d4d0c8}
+[data-theme="win98"] .theme-choice[aria-pressed="true"]{background:#e2e2fa;outline:1px dotted #000080}
+[data-theme="win98"] .theme-choice-name{font-weight:750}
+
+/* ---- Деловой: светлый корпоративный интерфейс ---- */
+:root[data-theme="business"]{
+  --bg:#f3f6fb;--card:#fff;--card-2:#eef3f9;--border:#d5dfeb;
+  --text:#1b2941;--muted:#617188;--accent:#1765bb;--accent-soft:#e7f1ff;
+  --blue:#2970a9;--yellow:#987000;--red:#bd3040;--purple:#7046a6;--orange:#a95a13;
+  color-scheme:light;
+}
+[data-theme="business"] body{font-family:'Segoe UI',Roboto,Arial,sans-serif}
+[data-theme="business"] header{background:rgba(255,255,255,.96);box-shadow:0 2px 14px rgba(24,56,91,.06);border-bottom-color:#d5dfeb}
+[data-theme="business"] .header-title{font-weight:750;color:#173969}
+[data-theme="business"] .card{border-radius:10px;box-shadow:0 3px 14px rgba(25,53,90,.035)}
+[data-theme="business"] .screen-title{font-weight:800;letter-spacing:-.4px}
+[data-theme="business"] .icon-btn,[data-theme="business"] .sync-btn,[data-theme="business"] .search,[data-theme="business"] .grade-btn,[data-theme="business"] .seg button{border-radius:8px}
+[data-theme="business"] .list-item:hover{border-color:#9ab9dd;background:#f9fbff}
+[data-theme="business"] .stat-mini{border-radius:9px;background:#fff}
+[data-theme="business"] .seg button.on{background:#e7f1ff}
+[data-theme="business"] .grade-btn.g5.active{background:#e2f6ec;border-color:#218559;color:#187345;box-shadow:none}
+[data-theme="business"] #sendbar{background:rgba(255,255,255,.97);box-shadow:0 -3px 16px rgba(24,56,91,.055)}
+[data-theme="business"] #send-btn{background:linear-gradient(135deg,#1765bb,#114a8d);color:#fff;border-radius:9px}
+[data-theme="business"] #toast{background:#fff;box-shadow:0 8px 30px rgba(25,53,90,.15)}
+[data-theme="business"] .sync-panel-inner,[data-theme="business"] .theme-panel-inner{background:#fff;border-radius:14px}
+[data-theme="business"] .sync-line{background:#f7f9fc}
+[data-theme="business"] .theme-choice{background:#f7f9fc}
+[data-theme="business"] .theme-choice[aria-pressed="true"]{background:#edf5ff}
+
+@media (max-width:420px){
+  .header-row{gap:7px}
+  .header-title{font-size:15px}
+  .header-sub{font-size:10px}
+  .sync-btn{max-width:112px;padding:8px 6px;font-size:10px}
+  .header-row>.icon-btn{width:36px;height:36px}
+  .theme-choice{grid-template-columns:72px minmax(0,1fr) 18px;gap:10px}
+  .theme-preview{height:56px}
+}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -158,6 +277,7 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
       <div class="header-sub">оценки по студенту — за все даты сразу</div>
     </div>
     <button id="sync-btn" class="sync-btn" onclick="toggleQueuePanel()" title="Очередь отправки">Подготовка…</button>
+    <button id="theme-btn" class="icon-btn theme-btn" onclick="toggleThemePanel()" title="Выбрать тему" aria-label="Выбрать тему" aria-expanded="false">🎨</button>
     <button class="icon-btn" onclick="refresh()" title="Обновить">⟳</button>
   </div>
 </header>
@@ -172,6 +292,32 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
     <div id="queue-content"></div>
   </div>
 </div>
+<div id="theme-panel" class="theme-panel" role="dialog" aria-modal="true" aria-labelledby="theme-title" hidden onclick="if(event.target === this) toggleThemePanel(false)">
+  <div class="theme-panel-inner">
+    <div class="theme-panel-header">
+      <div class="theme-panel-title" id="theme-title">Оформление журнала</div>
+      <button class="icon-btn" onclick="toggleThemePanel(false)" title="Закрыть" aria-label="Закрыть">✕</button>
+    </div>
+    <div class="theme-panel-subtitle">Выберите оформление. Оно сохранится в браузере и восстановится при следующем входе.</div>
+    <div class="theme-options">
+      <button class="theme-choice" data-theme-option="default" aria-pressed="false" onclick="setTheme('default')">
+        <span class="theme-preview preview-default" aria-hidden="true"><span class="theme-preview-bar"></span><span class="theme-preview-cols"><span class="theme-preview-tile"></span><span class="theme-preview-tile"></span></span></span>
+        <span><span class="theme-choice-name">Стандартная</span><span class="theme-choice-desc">Тёмная тема с яркими акцентами</span></span>
+        <span class="theme-choice-check" aria-hidden="true">✓</span>
+      </button>
+      <button class="theme-choice" data-theme-option="win98" aria-pressed="false" onclick="setTheme('win98')">
+        <span class="theme-preview preview-win98" aria-hidden="true"><span class="theme-preview-bar"></span><span class="theme-preview-cols"><span class="theme-preview-tile"></span><span class="theme-preview-tile"></span></span></span>
+        <span><span class="theme-choice-name">Windows 98</span><span class="theme-choice-desc">Классический интерфейс Windows</span></span>
+        <span class="theme-choice-check" aria-hidden="true">✓</span>
+      </button>
+      <button class="theme-choice" data-theme-option="business" aria-pressed="false" onclick="setTheme('business')">
+        <span class="theme-preview preview-business" aria-hidden="true"><span class="theme-preview-bar"></span><span class="theme-preview-cols"><span class="theme-preview-tile"></span><span class="theme-preview-tile"></span></span></span>
+        <span><span class="theme-choice-name">Деловой</span><span class="theme-choice-desc">Светлый стиль корпоративной системы</span></span>
+        <span class="theme-choice-check" aria-hidden="true">✓</span>
+      </button>
+    </div>
+  </div>
+</div>
 <main id="app"></main>
 
 <div id="sendbar">
@@ -182,7 +328,7 @@ main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
 
 <script>
 // ⚠️ ВСТАВЬТЕ СЮДА URL ВАШЕГО ВЕБ-ПРИЛОЖЕНИЯ APPS SCRIPT (заканчивается на /exec)
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJlk3qO1pLEiwCEY6wEBq3jJ8SSURr9v2qOYQanbux1kjkcMKSftP_4lum_mJNMTGt/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyqsjoEgVxuABle7p4im0wh_EUL-kDVXVW0TglSYhkfqPuULLZQhqnDwfOeHID_4Qh_mQ/exec';
 
 const state = {
   screen: 'groups',   // groups | students | student
@@ -212,6 +358,48 @@ let storageDB = null;
 let draftWriteChain = Promise.resolve();
 let syncTimer = null;
 let retryDelay = 1500;
+let lastRenderedScreen = null;
+let navigationDirection = 'forward';
+
+/* ---------- выбор темы ---------- */
+const THEME_STORAGE_KEY = 'mobile-journal-theme-v1';
+const THEME_COLORS = { default: '#0b0e14', win98: '#000080', business: '#ffffff' };
+function updateThemeChoices(){
+  const current = document.documentElement.dataset.theme || 'default';
+  document.querySelectorAll('[data-theme-option]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.themeOption === current));
+  });
+}
+function toggleThemePanel(force){
+  const panel = document.getElementById('theme-panel');
+  const open = typeof force === 'boolean' ? force : panel.hidden;
+  panel.hidden = !open;
+  document.getElementById('theme-btn').setAttribute('aria-expanded', String(open));
+  if(open){
+    if(state.queueOpen) toggleQueuePanel(false);
+    updateThemeChoices();
+    panel.querySelector('[aria-pressed="true"]')?.focus();
+  }else{
+    document.getElementById('theme-btn').focus();
+  }
+}
+function setTheme(name){
+  if(!Object.hasOwn(THEME_COLORS, name)) return;
+  document.documentElement.dataset.theme = name;
+  document.querySelector('meta[name="theme-color"]').content = THEME_COLORS[name];
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, name);
+  }catch(error){
+    toast('Тема изменена, но браузер не разрешил сохранить выбор', 'err');
+  }
+  updateThemeChoices();
+  toggleThemePanel(false);
+}
+document.addEventListener('keydown', event => {
+  if(event.key === 'Escape' && !document.getElementById('theme-panel').hidden){
+    toggleThemePanel(false);
+  }
+});
 
 /* ---------- утилиты ---------- */
 function escapeHtml(v){
@@ -579,6 +767,7 @@ async function loadGroups(){
 async function selectGroup(i){
   const g = state.groups[i];
   if(!g) return;
+  navigationDirection = 'forward';
   state.group = g;
   state.subFilter = '';
   state.studentSearch = '';
@@ -622,17 +811,20 @@ async function loadGroupData(silent = false){
 }
 
 function backToGroups(){
+  navigationDirection = 'back';
   state.screen = 'groups';
   state.group = null; state.data = null;
   state.studentIdx = -1;
   render();
 }
 function backToStudents(){
+  navigationDirection = 'back';
   state.screen = 'students';
   state.studentIdx = -1;
   render();
 }
 function openStudent(i){
+  navigationDirection = 'forward';
   state.studentIdx = i;
   state.screen = 'student';
   render();
@@ -737,13 +929,24 @@ async function sendGrades(){
 
 /* ---------- рендер ---------- */
 function render(){
+  const screenKey = isConfigured() ? state.screen : 'setup';
+  const changedScreen = lastRenderedScreen !== null && lastRenderedScreen !== screenKey;
   document.getElementById('sendbar').style.display = 'none';
-  if(!isConfigured()){ renderSetup(); return; }
-  if(state.screen === 'groups') renderGroups();
-  else if(state.screen === 'students') renderStudents();
-  else renderStudent();
-  renderSendbar();
-  renderSyncStatus();
+  if(!isConfigured()) renderSetup();
+  else {
+    if(state.screen === 'groups') renderGroups();
+    else if(state.screen === 'students') renderStudents();
+    else renderStudent();
+    renderSendbar();
+    renderSyncStatus();
+  }
+  lastRenderedScreen = screenKey;
+  if(changedScreen){
+    $app.classList.remove('page-enter-forward', 'page-enter-back');
+    // Перезапуск анимации только при смене экрана, не при оценках и синхронизации.
+    void $app.offsetWidth;
+    $app.classList.add(navigationDirection === 'back' ? 'page-enter-back' : 'page-enter-forward');
+  }
 }
 
 function renderSetup(){
